@@ -64,12 +64,14 @@ OPENAI_MODEL=gpt-4.1-mini
 ```
 
 If `DATABASE_PATH` is not set, the default is `./data/ai-layoff-radar.sqlite`.
+In serverless runtimes (for example Vercel), it automatically falls back to `/tmp/layofftracker/ai-layoff-radar.sqlite`.
 
 `CRON_SECRET` protects the cron endpoint (`/api/cron/ingest`).
 
 If `OPENAI_API_KEY` is not set, ingestion still works using the local heuristic fallback model.
 
 `DASHBOARD_CACHE_PATH` defaults to `./data/layoff-reports.json`.
+In serverless runtimes, cache falls back to `/tmp/layofftracker/layoff-reports.json`.
 
 ## Deploy + Hourly Fetch
 

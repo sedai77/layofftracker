@@ -4,11 +4,13 @@ import Database from "better-sqlite3";
 
 import { estimateLayoffCount } from "@/lib/layoff-count";
 import type { ImpactType } from "@/lib/options";
+import { resolveWritableFilePath } from "@/lib/storage-path";
 import type { SourceType } from "@/lib/types";
 
-const databasePath =
-  process.env.DATABASE_PATH ??
-  path.join(process.cwd(), "data", "ai-layoff-radar.sqlite");
+const databasePath = resolveWritableFilePath({
+  envPath: process.env.DATABASE_PATH,
+  defaultFileName: "ai-layoff-radar.sqlite",
+});
 
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 

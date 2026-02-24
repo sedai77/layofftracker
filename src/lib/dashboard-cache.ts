@@ -3,11 +3,13 @@ import path from "node:path";
 
 import { getDashboardData } from "@/lib/analytics";
 import { getDb, getLastSuccessfulIngestionAt } from "@/lib/db";
+import { resolveWritableFilePath } from "@/lib/storage-path";
 import type { DashboardData, DashboardFilters, ImpactEvent } from "@/lib/types";
 
-const cachePath =
-  process.env.DASHBOARD_CACHE_PATH ??
-  path.join(process.cwd(), "data", "layoff-reports.json");
+const cachePath = resolveWritableFilePath({
+  envPath: process.env.DASHBOARD_CACHE_PATH,
+  defaultFileName: "layoff-reports.json",
+});
 
 interface DashboardCacheFile {
   version: 2;
