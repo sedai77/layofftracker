@@ -1,11 +1,13 @@
 import type { ImpactType } from "@/lib/options";
 
 export type SourceType = "news" | "crowd";
+export type ModerationStatus = "approved" | "pending" | "rejected";
 
 export interface ImpactEvent {
   id: number;
   externalId: string;
   sourceType: SourceType;
+  moderationStatus: ModerationStatus;
   sourceName: string;
   sourceUrl: string | null;
   title: string;

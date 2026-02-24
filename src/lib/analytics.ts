@@ -54,7 +54,11 @@ export function getDashboardData(filters: DashboardFilters = {}): DashboardData 
   const db = getDb();
   const sinceIso = subDays(new Date(), 240).toISOString();
 
-  const conditions = ["is_ai_related = 1", "datetime(reported_at) >= datetime(?)"];
+  const conditions = [
+    "is_ai_related = 1",
+    "moderation_status = 'approved'",
+    "datetime(reported_at) >= datetime(?)",
+  ];
   const args: Array<string> = [sinceIso];
 
   if (filters.country && filters.country !== "All") {
@@ -101,6 +105,7 @@ export function getDashboardData(filters: DashboardFilters = {}): DashboardData 
       SELECT DISTINCT country
       FROM impact_events
       WHERE is_ai_related = 1
+        AND moderation_status = 'approved'
       ORDER BY country ASC
       `,
     )
@@ -113,6 +118,7 @@ export function getDashboardData(filters: DashboardFilters = {}): DashboardData 
       SELECT DISTINCT industry
       FROM impact_events
       WHERE is_ai_related = 1
+        AND moderation_status = 'approved'
       ORDER BY industry ASC
       `,
     )
@@ -361,11 +367,22 @@ function buildRiskIndex(
     buckets.set(label, bucket);
   });
 
+  const maxSignals = Math.max(
+    1,
+    ...Array.from(buckets.values()).map((bucket) => bucket.signals),
+  );
+
   const list: RiskIndexPoint[] = Array.from(buckets.entries())
     .map(([label, bucket]) => {
-      const impactScore = (bucket.weightedImpact / bucket.signals) * 70;
-      const severityScore = (bucket.severityTotal / bucket.signals) * 0.3;
-      const score = clamp(Math.round(impactScore + severityScore), 4, 100);
+      const impactScore = (bucket.weightedImpact / bucket.signals) * 65;
+      const severityScore = (bucket.severityTotal / bucket.signals) * 0.22;
+      const concentrationScore =
+        (Math.log1p(bucket.signals) / Math.log1p(maxSignals)) * 13;
+      const score = clamp(
+        Math.round(impactScore + severityScore + concentrationScore),
+        4,
+        100,
+      );
 
       return {
         label,

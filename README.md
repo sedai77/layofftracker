@@ -7,6 +7,7 @@ It combines:
 - AI model-based classification for each new layoff report (with heuristic fallback)
 - Estimated people-fired extraction from report text (plus severity-based imputation when headcount is undisclosed)
 - Crowdsourced submissions from workers and observers
+- Manual moderation queue for all public form submissions
 - Aggregated dashboard analytics (monthly trend, industry risk, role vulnerability, geography, velocity)
 - A company response channel for neutral context
 
@@ -61,6 +62,9 @@ CRON_SECRET=replace-with-random-secret
 DASHBOARD_CACHE_PATH=/absolute/path/to/layoff-reports.json
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4.1-mini
+MODERATION_ADMIN_TOKEN=replace-with-long-random-token
+SIGNAL_SUBMISSION_LIMIT_PER_HOUR=6
+COMPANY_RESPONSE_LIMIT_PER_HOUR=4
 ```
 
 If `DATABASE_PATH` is not set, the default is `./data/ai-layoff-radar.sqlite`.
@@ -69,11 +73,12 @@ In serverless runtimes (for example Vercel), it automatically falls back to `/tm
 `CRON_SECRET` protects the cron endpoint (`/api/cron/ingest`).
 
 If `OPENAI_API_KEY` is not set, ingestion still works using the local heuristic fallback model.
+If `MODERATION_ADMIN_TOKEN` is set, only requests with that token can review/approve/reject queued submissions.
 
 `DASHBOARD_CACHE_PATH` defaults to `./data/layoff-reports.json`.
 In serverless runtimes, cache falls back to `/tmp/layofftracker/layoff-reports.json`.
 
-## Deploy + Hourly Fetch
+## Deploy + Daily Fetch
 
 This repo includes `vercel.json` with a daily midnight cron schedule:
 
@@ -82,6 +87,32 @@ This repo includes `vercel.json` with a daily midnight cron schedule:
 For production, set `CRON_SECRET` so only authorized cron calls can trigger ingestion.
 
 Each cron ingestion run refreshes the local JSON cache file. Dashboard/API reads use that cache file.
+
+## Moderation Queue (Owner Approval)
+
+- `POST /api/submit` and `POST /api/company-response` now queue entries as `pending`.
+- Pending items do **not** affect public numbers until approved.
+- Dashboard analytics only use `moderation_status = approved`.
+
+Moderation API (requires `MODERATION_ADMIN_TOKEN`):
+
+```bash
+# List pending impact events + company responses
+curl "https://your-domain/api/admin/moderation?target=all&status=pending&limit=50" \
+  -H "x-admin-token: $MODERATION_ADMIN_TOKEN"
+
+# Approve impact event id=123
+curl -X POST "https://your-domain/api/admin/moderation" \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: $MODERATION_ADMIN_TOKEN" \
+  -d '{"target":"impact_event","id":123,"action":"approve","note":"verified source"}'
+
+# Reject company response id=45
+curl -X POST "https://your-domain/api/admin/moderation" \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: $MODERATION_ADMIN_TOKEN" \
+  -d '{"target":"company_response","id":45,"action":"reject","note":"spam"}'
+```
 
 ## Legal / Safety Positioning
 

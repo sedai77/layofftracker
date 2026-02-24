@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { insertCompanyResponse } from "@/lib/db";
+import { consumeSubmissionRateLimit, insertCompanyResponse } from "@/lib/db";
+import { getRequesterIp } from "@/lib/request-security";
 import { companyResponseSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -21,18 +22,39 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
+    const requesterIp = getRequesterIp(request);
+    const limit = consumeSubmissionRateLimit({
+      channel: "company_response",
+      requesterIp,
+      maxPerHour: Number(process.env.COMPANY_RESPONSE_LIMIT_PER_HOUR ?? 4),
+    });
+
+    if (!limit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: "Too many responses from this source. Try again later.",
+        },
+        {
+          status: 429,
+        },
+      );
+    }
+
     const id = insertCompanyResponse({
       company: data.company,
       statement: data.statement,
       contactEmail: data.contactEmail,
       referenceUrl: data.referenceUrl,
+      moderationStatus: "pending",
     });
 
     return NextResponse.json(
       {
         ok: true,
         id,
-        message: "Company response received and queued for moderation.",
+        message:
+          "Company response received and queued for moderator approval before publication.",
       },
       {
         status: 201,

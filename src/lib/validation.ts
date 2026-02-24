@@ -57,5 +57,18 @@ export const companyResponseSchema = z.object({
     .transform((value) => value || undefined),
 });
 
+export const moderationActionSchema = z.object({
+  target: z.enum(["impact_event", "company_response"]),
+  id: z.number().int().positive(),
+  action: z.enum(["approve", "reject"]),
+  note: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value) => value || undefined),
+});
+
 export type SubmissionInput = z.infer<typeof submissionSchema>;
 export type CompanyResponseInput = z.infer<typeof companyResponseSchema>;
+export type ModerationActionInput = z.infer<typeof moderationActionSchema>;

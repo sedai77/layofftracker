@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 import { estimateLayoffCount } from "@/lib/layoff-count";
 import type { ImpactType } from "@/lib/options";
 import { resolveWritableFilePath } from "@/lib/storage-path";
-import type { SourceType } from "@/lib/types";
+import type { ModerationStatus, SourceType } from "@/lib/types";
 
 const databasePath = resolveWritableFilePath({
   envPath: process.env.DATABASE_PATH,
@@ -37,6 +37,10 @@ if (!globalForDb.__layoffRadarDb) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       external_id TEXT NOT NULL UNIQUE,
       source_type TEXT NOT NULL CHECK (source_type IN ('news', 'crowd')),
+      moderation_status TEXT NOT NULL DEFAULT 'approved',
+      moderation_note TEXT,
+      moderated_at TEXT,
+      moderated_by TEXT,
       source_name TEXT NOT NULL,
       source_url TEXT,
       title TEXT NOT NULL,
@@ -70,6 +74,17 @@ if (!globalForDb.__layoffRadarDb) {
       statement TEXT NOT NULL,
       contact_email TEXT,
       reference_url TEXT,
+      moderation_status TEXT NOT NULL DEFAULT 'pending',
+      moderation_note TEXT,
+      moderated_at TEXT,
+      moderated_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS submission_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel TEXT NOT NULL CHECK (channel IN ('submit_signal', 'company_response')),
+      requester_ip TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -94,6 +109,14 @@ if (!globalForDb.__layoffRadarDb) {
   ensureColumn("impact_events", "ai_analyzed_at", "TEXT");
   ensureColumn(
     "impact_events",
+    "moderation_status",
+    "TEXT NOT NULL DEFAULT 'approved'",
+  );
+  ensureColumn("impact_events", "moderation_note", "TEXT");
+  ensureColumn("impact_events", "moderated_at", "TEXT");
+  ensureColumn("impact_events", "moderated_by", "TEXT");
+  ensureColumn(
+    "impact_events",
     "people_fired_estimate",
     "INTEGER NOT NULL DEFAULT 0",
   );
@@ -102,9 +125,21 @@ if (!globalForDb.__layoffRadarDb) {
     "people_fired_confidence",
     "REAL NOT NULL DEFAULT 0",
   );
+  ensureColumn(
+    "company_responses",
+    "moderation_status",
+    "TEXT NOT NULL DEFAULT 'pending'",
+  );
+  ensureColumn("company_responses", "moderation_note", "TEXT");
+  ensureColumn("company_responses", "moderated_at", "TEXT");
+  ensureColumn("company_responses", "moderated_by", "TEXT");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_events_ai_related ON impact_events(is_ai_related);
+    CREATE INDEX IF NOT EXISTS idx_events_moderation_status ON impact_events(moderation_status);
+    CREATE INDEX IF NOT EXISTS idx_company_responses_moderation_status ON company_responses(moderation_status);
+    CREATE INDEX IF NOT EXISTS idx_submission_attempts_channel_ip_created
+      ON submission_attempts(channel, requester_ip, created_at DESC);
 
     UPDATE impact_events
     SET is_ai_related = 1,
@@ -112,9 +147,29 @@ if (!globalForDb.__layoffRadarDb) {
         ai_model = COALESCE(ai_model, 'legacy-heuristic'),
         ai_confidence = COALESCE(ai_confidence, confidence),
         ai_analyzed_at = COALESCE(ai_analyzed_at, created_at),
+        moderation_status = COALESCE(
+          moderation_status,
+          CASE
+            WHEN source_type = 'crowd' THEN 'pending'
+            ELSE 'approved'
+          END
+        ),
         people_fired_estimate = COALESCE(people_fired_estimate, 0),
         people_fired_confidence = COALESCE(people_fired_confidence, 0)
     WHERE ai_model IS NULL;
+
+    UPDATE impact_events
+    SET moderation_status = CASE
+      WHEN moderation_status IN ('approved', 'pending', 'rejected') THEN moderation_status
+      WHEN source_type = 'crowd' THEN 'pending'
+      ELSE 'approved'
+    END;
+
+    UPDATE company_responses
+    SET moderation_status = CASE
+      WHEN moderation_status IN ('approved', 'pending', 'rejected') THEN moderation_status
+      ELSE 'pending'
+    END;
   `);
 
   backfillPeopleFiredEstimates();
@@ -125,6 +180,7 @@ if (!globalForDb.__layoffRadarDb) {
 export interface EventInput {
   externalId: string;
   sourceType: SourceType;
+  moderationStatus?: ModerationStatus;
   sourceName: string;
   sourceUrl?: string | null;
   title: string;
@@ -151,6 +207,7 @@ export function insertEvent(input: EventInput): boolean {
     INSERT OR IGNORE INTO impact_events (
       external_id,
       source_type,
+      moderation_status,
       source_name,
       source_url,
       title,
@@ -173,6 +230,7 @@ export function insertEvent(input: EventInput): boolean {
     ) VALUES (
       @externalId,
       @sourceType,
+      @moderationStatus,
       @sourceName,
       @sourceUrl,
       @title,
@@ -197,6 +255,7 @@ export function insertEvent(input: EventInput): boolean {
 
   const result = statement.run({
     ...input,
+    moderationStatus: input.moderationStatus ?? "approved",
     sourceUrl: input.sourceUrl ?? null,
     company: input.company ?? null,
     isAiRelated: input.isAiRelated ? 1 : 0,
@@ -231,18 +290,21 @@ export function insertCompanyResponse(input: {
   statement: string;
   contactEmail?: string | null;
   referenceUrl?: string | null;
+  moderationStatus?: ModerationStatus;
 }): number {
   const statement = db.prepare(`
     INSERT INTO company_responses (
       company,
       statement,
       contact_email,
-      reference_url
+      reference_url,
+      moderation_status
     ) VALUES (
       @company,
       @statement,
       @contactEmail,
-      @referenceUrl
+      @referenceUrl,
+      @moderationStatus
     )
   `);
 
@@ -250,9 +312,253 @@ export function insertCompanyResponse(input: {
     ...input,
     contactEmail: input.contactEmail ?? null,
     referenceUrl: input.referenceUrl ?? null,
+    moderationStatus: input.moderationStatus ?? "pending",
   });
 
   return Number(result.lastInsertRowid);
+}
+
+const MODERATION_STATUSES: readonly ModerationStatus[] = [
+  "approved",
+  "pending",
+  "rejected",
+];
+
+type SubmissionAttemptChannel = "submit_signal" | "company_response";
+
+export interface ModerationImpactEventRecord {
+  id: number;
+  sourceType: SourceType;
+  moderationStatus: ModerationStatus;
+  sourceName: string;
+  sourceUrl: string | null;
+  title: string;
+  summary: string;
+  company: string | null;
+  industry: string;
+  jobFunction: string;
+  country: string;
+  impactType: ImpactType;
+  isAiRelated: boolean;
+  aiReason: string | null;
+  aiConfidence: number | null;
+  peopleFiredEstimate: number;
+  reportedAt: string;
+  createdAt: string;
+}
+
+interface ModerationImpactEventRow
+  extends Omit<ModerationImpactEventRecord, "isAiRelated"> {
+  isAiRelated: number;
+}
+
+export interface ModerationCompanyResponseRecord {
+  id: number;
+  moderationStatus: ModerationStatus;
+  company: string;
+  statement: string;
+  contactEmail: string | null;
+  referenceUrl: string | null;
+  createdAt: string;
+}
+
+export function listImpactEventsForModeration(
+  status: ModerationStatus = "pending",
+  limit = 50,
+): ModerationImpactEventRecord[] {
+  const normalizedStatus = ensureModerationStatus(status);
+  const normalizedLimit = clampLimit(limit);
+
+  return db
+    .prepare(
+      `
+      SELECT
+        id,
+        source_type AS sourceType,
+        moderation_status AS moderationStatus,
+        source_name AS sourceName,
+        source_url AS sourceUrl,
+        title,
+        summary,
+        company,
+        industry,
+        job_function AS jobFunction,
+        country,
+        impact_type AS impactType,
+        is_ai_related AS isAiRelated,
+        ai_reason AS aiReason,
+        ai_confidence AS aiConfidence,
+        people_fired_estimate AS peopleFiredEstimate,
+        reported_at AS reportedAt,
+        created_at AS createdAt
+      FROM impact_events
+      WHERE moderation_status = ?
+      ORDER BY datetime(created_at) DESC
+      LIMIT ?
+      `,
+    )
+    .all(normalizedStatus, normalizedLimit)
+    .map((row) => {
+      const typed = row as ModerationImpactEventRow;
+      return {
+        id: typed.id,
+        sourceType: typed.sourceType,
+        moderationStatus: typed.moderationStatus,
+        sourceName: typed.sourceName,
+        sourceUrl: typed.sourceUrl,
+        title: typed.title,
+        summary: typed.summary,
+        company: typed.company,
+        industry: typed.industry,
+        jobFunction: typed.jobFunction,
+        country: typed.country,
+        impactType: typed.impactType,
+        isAiRelated: typed.isAiRelated === 1,
+        aiReason: typed.aiReason,
+        aiConfidence: typed.aiConfidence,
+        peopleFiredEstimate: typed.peopleFiredEstimate,
+        reportedAt: typed.reportedAt,
+        createdAt: typed.createdAt,
+      } satisfies ModerationImpactEventRecord;
+    });
+}
+
+export function setImpactEventModeration(input: {
+  id: number;
+  status: ModerationStatus;
+  moderatedBy: string;
+  note?: string | null;
+}): boolean {
+  const normalizedStatus = ensureModerationStatus(input.status);
+  const result = db
+    .prepare(
+      `
+      UPDATE impact_events
+      SET moderation_status = @status,
+          moderation_note = @note,
+          moderated_at = @moderatedAt,
+          moderated_by = @moderatedBy
+      WHERE id = @id
+      `,
+    )
+    .run({
+      id: input.id,
+      status: normalizedStatus,
+      note: input.note ?? null,
+      moderatedAt: new Date().toISOString(),
+      moderatedBy: input.moderatedBy.slice(0, 120),
+    });
+
+  return result.changes > 0;
+}
+
+export function listCompanyResponsesForModeration(
+  status: ModerationStatus = "pending",
+  limit = 50,
+): ModerationCompanyResponseRecord[] {
+  const normalizedStatus = ensureModerationStatus(status);
+  const normalizedLimit = clampLimit(limit);
+
+  return db
+    .prepare(
+      `
+      SELECT
+        id,
+        moderation_status AS moderationStatus,
+        company,
+        statement,
+        contact_email AS contactEmail,
+        reference_url AS referenceUrl,
+        created_at AS createdAt
+      FROM company_responses
+      WHERE moderation_status = ?
+      ORDER BY datetime(created_at) DESC
+      LIMIT ?
+      `,
+    )
+    .all(normalizedStatus, normalizedLimit) as ModerationCompanyResponseRecord[];
+}
+
+export function setCompanyResponseModeration(input: {
+  id: number;
+  status: ModerationStatus;
+  moderatedBy: string;
+  note?: string | null;
+}): boolean {
+  const normalizedStatus = ensureModerationStatus(input.status);
+  const result = db
+    .prepare(
+      `
+      UPDATE company_responses
+      SET moderation_status = @status,
+          moderation_note = @note,
+          moderated_at = @moderatedAt,
+          moderated_by = @moderatedBy
+      WHERE id = @id
+      `,
+    )
+    .run({
+      id: input.id,
+      status: normalizedStatus,
+      note: input.note ?? null,
+      moderatedAt: new Date().toISOString(),
+      moderatedBy: input.moderatedBy.slice(0, 120),
+    });
+
+  return result.changes > 0;
+}
+
+export function consumeSubmissionRateLimit(input: {
+  channel: SubmissionAttemptChannel;
+  requesterIp: string;
+  maxPerHour: number;
+}): { allowed: boolean; currentHits: number } {
+  const channel =
+    input.channel === "company_response" ? "company_response" : "submit_signal";
+  const requesterIp = (input.requesterIp || "unknown")
+    .slice(0, 120)
+    .trim()
+    .toLowerCase();
+  const maxPerHour = Math.max(1, Math.min(200, Math.floor(input.maxPerHour)));
+
+  db.prepare(
+    `
+    DELETE FROM submission_attempts
+    WHERE datetime(created_at) < datetime('now', '-2 day')
+    `,
+  ).run();
+
+  const hitsRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS count
+      FROM submission_attempts
+      WHERE channel = ?
+        AND requester_ip = ?
+        AND datetime(created_at) >= datetime('now', '-1 hour')
+      `,
+    )
+    .get(channel, requesterIp) as { count: number };
+
+  const currentHits = hitsRow.count;
+  if (currentHits >= maxPerHour) {
+    return {
+      allowed: false,
+      currentHits,
+    };
+  }
+
+  db.prepare(
+    `
+    INSERT INTO submission_attempts (channel, requester_ip)
+    VALUES (?, ?)
+    `,
+  ).run(channel, requesterIp);
+
+  return {
+    allowed: true,
+    currentHits: currentHits + 1,
+  };
 }
 
 export function createIngestionRun(startedAt: string): number {
@@ -304,6 +610,22 @@ export function getLastSuccessfulIngestionAt(): string | null {
 
 export function getDb() {
   return db;
+}
+
+function ensureModerationStatus(status: string): ModerationStatus {
+  if ((MODERATION_STATUSES as readonly string[]).includes(status)) {
+    return status as ModerationStatus;
+  }
+
+  return "pending";
+}
+
+function clampLimit(limit: number): number {
+  if (!Number.isFinite(limit)) {
+    return 50;
+  }
+
+  return Math.min(200, Math.max(1, Math.floor(limit)));
 }
 
 function ensureColumn(

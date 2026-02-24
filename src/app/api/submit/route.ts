@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { analyzeLayoffReport } from "@/lib/ai-analysis";
-import { insertEvent } from "@/lib/db";
-import { refreshDashboardCache } from "@/lib/dashboard-cache";
+import { consumeSubmissionRateLimit, insertEvent } from "@/lib/db";
+import { getRequesterIp } from "@/lib/request-security";
 import { submissionSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -25,6 +25,37 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
+    const requesterIp = getRequesterIp(request);
+    const limit = consumeSubmissionRateLimit({
+      channel: "submit_signal",
+      requesterIp,
+      maxPerHour: Number(process.env.SIGNAL_SUBMISSION_LIMIT_PER_HOUR ?? 6),
+    });
+
+    if (!limit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: "Too many submissions from this source. Try again later.",
+        },
+        {
+          status: 429,
+        },
+      );
+    }
+
+    if (!data.sourceUrl && !data.company) {
+      return NextResponse.json(
+        {
+          error: "Submission requires context",
+          message: "Provide at least a source URL or company name.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
     const now = new Date().toISOString();
     const aiAnalysis = await analyzeLayoffReport({
       title: data.title,
@@ -34,25 +65,12 @@ export async function POST(request: Request) {
     });
 
     const reportedAt = normalizeReportedDate(data.reportedAt, now);
-    const externalId = createHash("sha256")
-      .update(
-        [
-          data.title,
-          data.summary,
-          data.company ?? "",
-          data.industry,
-          data.jobFunction,
-          data.country,
-          data.impactType,
-          reportedAt,
-          now,
-        ].join("|"),
-      )
-      .digest("hex");
+    const externalId = buildSubmissionExternalId(data, reportedAt);
 
     const inserted = insertEvent({
       externalId,
       sourceType: "crowd",
+      moderationStatus: "pending",
       sourceName: "Self-reported submission",
       sourceUrl: data.sourceUrl ?? null,
       title: data.title,
@@ -85,12 +103,11 @@ export async function POST(request: Request) {
       );
     }
 
-    refreshDashboardCache();
-
     return NextResponse.json(
       {
         ok: true,
-        message: "Submission recorded and queued in the public aggregate.",
+        message:
+          "Submission received and queued for moderator approval before it appears in public numbers.",
       },
       {
         status: 201,
@@ -109,6 +126,47 @@ export async function POST(request: Request) {
       },
     );
   }
+}
+
+function buildSubmissionExternalId(
+  data: {
+    title: string;
+    summary: string;
+    company?: string;
+    industry: string;
+    jobFunction: string;
+    country: string;
+    impactType: "automation" | "partial" | "productivity";
+    sourceUrl?: string;
+  },
+  reportedAt: string,
+): string {
+  const normalizedReportedDay = reportedAt.slice(0, 10);
+
+  return createHash("sha256")
+    .update(
+      [
+        "crowd",
+        normalizeForFingerprint(data.title),
+        normalizeForFingerprint(data.summary),
+        normalizeForFingerprint(data.company ?? ""),
+        data.industry,
+        data.jobFunction,
+        data.country,
+        data.impactType,
+        normalizeForFingerprint(data.sourceUrl ?? ""),
+        normalizedReportedDay,
+      ].join("|"),
+    )
+    .digest("hex");
+}
+
+function normalizeForFingerprint(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 500);
 }
 
 function normalizeReportedDate(value: string | undefined, fallback: string): string {

@@ -16,6 +16,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -289,11 +290,12 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
               </h1>
               <p className="max-w-2xl text-sm text-slate-200 md:text-base">
                 Signals are aggregated from public news and self-reports. This index
-                is updated hourly and designed for trend detection, not blame.
+                is updated daily by cron (plus on-demand refresh) and designed for trend
+                detection, not blame.
               </p>
               <div className="flex flex-wrap gap-2 text-xs text-cyan-100 md:text-sm">
                 <Tag icon={<ShieldAlert className="h-3.5 w-3.5" />} text="Self-reported + verified-source blend" />
-                <Tag icon={<Clock3 className="h-3.5 w-3.5" />} text="Hourly ingestion pipeline" />
+                <Tag icon={<Clock3 className="h-3.5 w-3.5" />} text="Daily ingestion pipeline" />
                 <Tag icon={<Globe2 className="h-3.5 w-3.5" />} text="No login required" />
               </div>
             </div>
@@ -432,6 +434,8 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                 <XAxis dataKey="month" stroke="#94a3b8" tick={{ fontSize: 12 }} />
                 <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
                 <Tooltip
+                  labelStyle={{ color: "#f8fafc" }}
+                  itemStyle={{ color: "#f8fafc" }}
                   contentStyle={{
                     background: "#020617",
                     border: "1px solid rgba(148,163,184,.35)",
@@ -479,6 +483,8 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                 <XAxis dataKey="week" stroke="#94a3b8" tick={{ fontSize: 12 }} />
                 <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
                 <Tooltip
+                  labelStyle={{ color: "#f8fafc" }}
+                  itemStyle={{ color: "#f8fafc" }}
                   contentStyle={{
                     background: "#020617",
                     border: "1px solid rgba(148,163,184,.35)",
@@ -507,17 +513,30 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
         >
           <Panel title="Industry AI Risk Index" subtitle="Score blends severity + signal concentration">
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={dashboard.industryRiskIndex} layout="vertical" margin={{ left: 30 }}>
+              <BarChart
+                data={dashboard.industryRiskIndex}
+                layout="vertical"
+                margin={{ left: 12, right: 18 }}
+              >
                 <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 12 }}
+                />
                 <YAxis
                   type="category"
                   dataKey="label"
                   stroke="#94a3b8"
-                  width={130}
+                  width={150}
                   tick={{ fontSize: 11 }}
+                  tickFormatter={(value) => compactLabel(String(value), 22)}
                 />
                 <Tooltip
+                  cursor={false}
+                  labelStyle={{ color: "#f8fafc" }}
+                  itemStyle={{ color: "#f8fafc" }}
                   contentStyle={{
                     background: "#020617",
                     border: "1px solid rgba(148,163,184,.35)",
@@ -531,6 +550,13 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                   isAnimationActive
                   animationDuration={1100}
                 >
+                  <LabelList
+                    dataKey="score"
+                    position="right"
+                    offset={8}
+                    fill="#e2e8f0"
+                    fontSize={11}
+                  />
                   {dashboard.industryRiskIndex.map((entry) => (
                     <Cell
                       key={entry.label}
@@ -544,11 +570,30 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
 
           <Panel title="Role vulnerability score" subtitle="Function-level exposure across tracked reports">
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={dashboard.roleVulnerability}>
+              <BarChart
+                data={dashboard.roleVulnerability}
+                layout="vertical"
+                margin={{ left: 12, right: 18 }}
+              >
                 <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                <XAxis dataKey="label" stroke="#94a3b8" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={65} />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  stroke="#94a3b8"
+                  width={150}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(value) => compactLabel(String(value), 22)}
+                />
                 <Tooltip
+                  cursor={false}
+                  labelStyle={{ color: "#f8fafc" }}
+                  itemStyle={{ color: "#f8fafc" }}
                   contentStyle={{
                     background: "#020617",
                     border: "1px solid rgba(148,163,184,.35)",
@@ -558,10 +603,17 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                 />
                 <Bar
                   dataKey="score"
-                  radius={[8, 8, 0, 0]}
+                  radius={[0, 10, 10, 0]}
                   isAnimationActive
                   animationDuration={1100}
                 >
+                  <LabelList
+                    dataKey="score"
+                    position="right"
+                    offset={8}
+                    fill="#e2e8f0"
+                    fontSize={11}
+                  />
                   {dashboard.roleVulnerability.map((entry) => (
                     <Cell
                       key={entry.label}
@@ -609,7 +661,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
             </div>
           </Panel>
 
-          <Panel title="Latest stories" subtitle="Public links + self-reported entries">
+          <Panel title="Latest stories" subtitle="Public links + approved self-reported entries">
             <div className="space-y-3">
               {dashboard.stories.length === 0 && (
                 <p className="text-sm text-slate-300">No events yet. Submit the first report below.</p>
@@ -662,7 +714,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
         >
           <Panel
             title="Submit an AI impact signal"
-            subtitle="Public, no-login, moderated aggregation. Keep entries factual."
+            subtitle="Anyone can submit, but every entry is held in pending review until manually approved."
           >
             <form className="grid gap-3" onSubmit={handleSubmitReport}>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -772,7 +824,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
 
           <Panel
             title="Company response channel"
-            subtitle="Organizations can submit clarifications for moderation and context."
+            subtitle="Responses are queued and require manual moderation before publication."
           >
             <form className="grid gap-3" onSubmit={handleSubmitCompanyResponse}>
               <Field
@@ -831,9 +883,9 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           style={{ transitionDelay: "500ms" }}
         >
           <p>
-            Legal note: this dashboard aggregates self-reported and public signals for
-            statistical analysis. It does not assert wrongdoing or legal liability by
-            any company.
+            Legal note: this dashboard aggregates approved self-reported and public
+            signals for statistical analysis. It does not assert wrongdoing or legal
+            liability by any company.
           </p>
         </footer>
       </div>
@@ -968,6 +1020,14 @@ function CountUpNumber({
   }).format(rounded);
 
   return <span className={className}>{formatted}</span>;
+}
+
+function compactLabel(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
 function Field({

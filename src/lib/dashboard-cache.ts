@@ -12,7 +12,7 @@ const cachePath = resolveWritableFilePath({
 });
 
 interface DashboardCacheFile {
-  version: 2;
+  version: 3;
   generatedAt: string;
   lastIngestedAt: string | null;
   availableCountries: string[];
@@ -25,6 +25,7 @@ interface DbEventRow {
   id: number;
   external_id: string;
   source_type: "news" | "crowd";
+  moderation_status: "approved" | "pending" | "rejected";
   source_name: string;
   source_url: string | null;
   title: string;
@@ -109,6 +110,7 @@ export function refreshDashboardCache(): DashboardCacheFile {
         id,
         external_id,
         source_type,
+        moderation_status,
         source_name,
         source_url,
         title,
@@ -137,7 +139,7 @@ export function refreshDashboardCache(): DashboardCacheFile {
     .all() as DbEventRow[];
 
   const payload: DashboardCacheFile = {
-    version: 2,
+    version: 3,
     generatedAt: new Date().toISOString(),
     lastIngestedAt: getLastSuccessfulIngestionAt(),
     availableCountries: countries,
@@ -168,7 +170,7 @@ function readDashboardCache(): DashboardCacheFile | null {
     const summary = parsed?.dashboardByKey?.[toCacheKey({})]?.summary;
 
     if (
-      parsed?.version !== 2 ||
+      parsed?.version !== 3 ||
       !parsed.dashboardByKey ||
       typeof summary?.peopleFiredTotal !== "number"
     ) {
@@ -194,6 +196,7 @@ function mapDbEventToImpactEvent(row: DbEventRow): ImpactEvent {
     id: row.id,
     externalId: row.external_id,
     sourceType: row.source_type,
+    moderationStatus: row.moderation_status,
     sourceName: row.source_name,
     sourceUrl: row.source_url,
     title: row.title,
