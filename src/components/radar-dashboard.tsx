@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   Area,
   AreaChart,
@@ -85,6 +93,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
   const [industryFilter, setIndustryFilter] = useState("All");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
 
   const [submission, setSubmission] = useState(initialSubmissionState);
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
@@ -144,6 +153,11 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
 
     return () => clearInterval(interval);
   }, [refreshData]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const countries = useMemo(
     () => [
@@ -226,14 +240,20 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
   };
 
   const velocityLabel = pctLabel(dashboard.summary.velocityDeltaPct);
+  const revealClass = revealed
+    ? "translate-y-0 opacity-100"
+    : "translate-y-3 opacity-0";
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#031126] text-slate-100">
       <div className="pointer-events-none absolute inset-0 opacity-60 [background:radial-gradient(circle_at_15%_20%,rgba(16,185,129,.25),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(14,165,233,.2),transparent_40%),radial-gradient(circle_at_70%_70%,rgba(245,158,11,.18),transparent_32%)]" />
       <div className="mx-auto w-full max-w-7xl px-4 py-8 md:px-10 md:py-12">
-        <header className="relative overflow-hidden rounded-3xl border border-cyan-300/20 bg-slate-900/65 p-6 shadow-2xl backdrop-blur-xl md:p-10">
-          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl" />
-          <div className="absolute -bottom-20 left-20 h-44 w-44 rounded-full bg-emerald-500/20 blur-3xl" />
+        <header
+          className={`relative overflow-hidden rounded-3xl border border-cyan-300/20 bg-slate-900/65 p-6 shadow-2xl backdrop-blur-xl transition-all duration-700 md:p-10 ${revealClass}`}
+          style={{ transitionDelay: "40ms" }}
+        >
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
+          <div className="absolute -bottom-20 left-20 h-44 w-44 rounded-full bg-emerald-500/20 blur-3xl animate-pulse" />
 
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl space-y-4">
@@ -245,16 +265,20 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                   Estimated people fired in AI-related layoffs
                 </p>
                 <div className="mt-1 flex items-end gap-2">
-                  <p className="text-4xl font-semibold leading-none text-white md:text-5xl">
-                    {dashboard.summary.peopleFiredTotal.toLocaleString()}
-                  </p>
+                  <CountUpNumber
+                    value={dashboard.summary.peopleFiredTotal}
+                    className="text-4xl font-semibold leading-none text-white md:text-5xl"
+                  />
                   <p className="pb-1 text-sm text-rose-100">
                     people in this filtered view
                   </p>
                 </div>
                 {dashboard.summary.layoffReportsWithoutHeadcount > 0 && (
                   <p className="mt-1 text-xs text-rose-100/90">
-                    {dashboard.summary.layoffReportsWithoutHeadcount.toLocaleString()} layoff reports
+                    <CountUpNumber
+                      value={dashboard.summary.layoffReportsWithoutHeadcount}
+                    />{" "}
+                    layoff reports
                     have no headcount disclosed.
                   </p>
                 )}
@@ -278,13 +302,13 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
               <StatTile
                 icon={<AlertTriangle className="h-4 w-4 text-rose-300" />}
                 label="People Fired"
-                value={dashboard.summary.peopleFiredTotal.toLocaleString()}
+                value={<CountUpNumber value={dashboard.summary.peopleFiredTotal} />}
                 note="Estimated total"
               />
               <StatTile
                 icon={<TrendingUp className="h-4 w-4 text-amber-300" />}
                 label="AI Velocity"
-                value={`${dashboard.summary.currentVelocity.toFixed(1)}`}
+                value={<CountUpNumber value={dashboard.summary.currentVelocity} decimals={1} />}
                 note={velocityLabel}
                 highlight={dashboard.summary.velocityDeltaPct >= 0}
               />
@@ -304,35 +328,41 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           </div>
         </header>
 
-        <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section
+          className={`mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5 transition-all duration-700 ${revealClass}`}
+          style={{ transitionDelay: "120ms" }}
+        >
           <NumberBoardTile
             label="Total People Fired"
-            value={dashboard.summary.peopleFiredTotal.toLocaleString()}
+            value={<CountUpNumber value={dashboard.summary.peopleFiredTotal} />}
             note="AI-attributed layoffs, last 240 days"
           />
           <NumberBoardTile
             label="People Fired This Month"
-            value={dashboard.summary.peopleFiredThisMonth.toLocaleString()}
+            value={<CountUpNumber value={dashboard.summary.peopleFiredThisMonth} />}
             note="Month-to-date estimate"
           />
           <NumberBoardTile
             label="People Fired (30 Days)"
-            value={dashboard.summary.peopleFiredLast30Days.toLocaleString()}
+            value={<CountUpNumber value={dashboard.summary.peopleFiredLast30Days} />}
             note="Rolling 30-day estimate"
           />
           <NumberBoardTile
             label="People Fired (7 Days)"
-            value={dashboard.summary.peopleFiredLast7Days.toLocaleString()}
+            value={<CountUpNumber value={dashboard.summary.peopleFiredLast7Days} />}
             note="Rolling weekly estimate"
           />
           <NumberBoardTile
             label="Top Impacted Industry"
-            value={dashboard.summary.topLayoffIndustryPeopleFired.toLocaleString()}
+            value={<CountUpNumber value={dashboard.summary.topLayoffIndustryPeopleFired} />}
             note={dashboard.summary.topLayoffIndustry ?? "No layoff industry yet"}
           />
         </section>
 
-        <section className="mt-6 rounded-2xl border border-slate-200/10 bg-slate-900/55 p-4 backdrop-blur-lg md:p-5">
+        <section
+          className={`mt-6 rounded-2xl border border-slate-200/10 bg-slate-900/55 p-4 backdrop-blur-lg transition-all duration-700 md:p-5 ${revealClass}`}
+          style={{ transitionDelay: "190ms" }}
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:w-[520px]">
               <label className="text-xs text-slate-300">
@@ -391,7 +421,10 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           {error && <p className="mt-3 text-xs text-rose-300">{error}</p>}
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section
+          className={`mt-6 grid gap-4 lg:grid-cols-2 transition-all duration-700 ${revealClass}`}
+          style={{ transitionDelay: "240ms" }}
+        >
           <Panel title="Monthly AI-attributed layoffs" subtitle="Automation + partial replacement trend">
             <ResponsiveContainer width="100%" height={290}>
               <LineChart data={dashboard.monthlyTrend}>
@@ -413,6 +446,9 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                   stroke="#fb7185"
                   strokeWidth={2.8}
                   dot={{ r: 3 }}
+                  isAnimationActive
+                  animationDuration={1200}
+                  animationBegin={120}
                   name="Layoff pressure"
                 />
                 <Line
@@ -421,6 +457,9 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                   stroke="#4ade80"
                   strokeWidth={2.4}
                   dot={{ r: 2 }}
+                  isAnimationActive
+                  animationDuration={1200}
+                  animationBegin={220}
                   name="Productivity signals"
                 />
               </LineChart>
@@ -453,13 +492,19 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                   stroke="#fbbf24"
                   strokeWidth={2.8}
                   fill="url(#velocityFill)"
+                  isAnimationActive
+                  animationDuration={1300}
+                  animationBegin={180}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
         </section>
 
-        <section className="mt-4 grid gap-4 lg:grid-cols-2">
+        <section
+          className={`mt-4 grid gap-4 lg:grid-cols-2 transition-all duration-700 ${revealClass}`}
+          style={{ transitionDelay: "300ms" }}
+        >
           <Panel title="Industry AI Risk Index" subtitle="Score blends severity + signal concentration">
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={dashboard.industryRiskIndex} layout="vertical" margin={{ left: 30 }}>
@@ -480,7 +525,12 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                     color: "#e2e8f0",
                   }}
                 />
-                <Bar dataKey="score" radius={[0, 10, 10, 0]}>
+                <Bar
+                  dataKey="score"
+                  radius={[0, 10, 10, 0]}
+                  isAnimationActive
+                  animationDuration={1100}
+                >
                   {dashboard.industryRiskIndex.map((entry) => (
                     <Cell
                       key={entry.label}
@@ -506,7 +556,12 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                     color: "#e2e8f0",
                   }}
                 />
-                <Bar dataKey="score" radius={[8, 8, 0, 0]}>
+                <Bar
+                  dataKey="score"
+                  radius={[8, 8, 0, 0]}
+                  isAnimationActive
+                  animationDuration={1100}
+                >
                   {dashboard.roleVulnerability.map((entry) => (
                     <Cell
                       key={entry.label}
@@ -519,7 +574,10 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           </Panel>
         </section>
 
-        <section className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <section
+          className={`mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr] transition-all duration-700 ${revealClass}`}
+          style={{ transitionDelay: "360ms" }}
+        >
           <Panel title="Geographic heatmap" subtitle="Country-level AI displacement intensity">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {dashboard.countryHeatmap.length === 0 && (
@@ -531,7 +589,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                 return (
                   <article
                     key={country.country}
-                    className="rounded-xl border border-slate-200/10 p-3"
+                    className="rounded-xl border border-slate-200/10 p-3 transition-transform duration-300 hover:-translate-y-1"
                     style={{
                       backgroundColor: `rgba(251, 146, 60, ${opacity * 0.32})`,
                     }}
@@ -560,7 +618,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
               {dashboard.stories.map((story) => (
                 <article
                   key={story.id}
-                  className="rounded-xl border border-slate-200/10 bg-slate-950/45 p-3"
+                  className="rounded-xl border border-slate-200/10 bg-slate-950/45 p-3 transition-transform duration-300 hover:-translate-y-1"
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-200">
@@ -598,7 +656,10 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           </Panel>
         </section>
 
-        <section className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section
+          className={`mt-4 grid gap-4 xl:grid-cols-2 transition-all duration-700 ${revealClass}`}
+          style={{ transitionDelay: "420ms" }}
+        >
           <Panel
             title="Submit an AI impact signal"
             subtitle="Public, no-login, moderated aggregation. Keep entries factual."
@@ -765,7 +826,10 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           </Panel>
         </section>
 
-        <footer className="mt-6 rounded-2xl border border-slate-200/10 bg-slate-900/60 p-4 text-xs text-slate-300 md:p-5">
+        <footer
+          className={`mt-6 rounded-2xl border border-slate-200/10 bg-slate-900/60 p-4 text-xs text-slate-300 transition-all duration-700 md:p-5 ${revealClass}`}
+          style={{ transitionDelay: "500ms" }}
+        >
           <p>
             Legal note: this dashboard aggregates self-reported and public signals for
             statistical analysis. It does not assert wrongdoing or legal liability by
@@ -806,7 +870,7 @@ function StatTile({
 }: {
   icon: ReactNode;
   label: string;
-  value: string;
+  value: ReactNode;
   note: string;
   highlight?: boolean;
 }) {
@@ -841,7 +905,7 @@ function NumberBoardTile({
   note,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   note: string;
 }) {
   return (
@@ -851,6 +915,59 @@ function NumberBoardTile({
       <p className="mt-1 text-xs text-slate-300">{note}</p>
     </article>
   );
+}
+
+function CountUpNumber({
+  value,
+  className,
+  decimals = 0,
+  durationMs = 1200,
+}: {
+  value: number;
+  className?: string;
+  decimals?: number;
+  durationMs?: number;
+}) {
+  const [displayValue, setDisplayValue] = useState(0);
+  const previousTargetRef = useRef(0);
+
+  useEffect(() => {
+    const startValue = previousTargetRef.current;
+    const delta = value - startValue;
+    const startTime = performance.now();
+    let frameId = 0;
+
+    const renderStep = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      const currentValue = startValue + delta * easedProgress;
+
+      setDisplayValue(currentValue);
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(renderStep);
+        return;
+      }
+
+      previousTargetRef.current = value;
+      setDisplayValue(value);
+    };
+
+    frameId = requestAnimationFrame(renderStep);
+    return () => cancelAnimationFrame(frameId);
+  }, [durationMs, value]);
+
+  const rounded =
+    decimals > 0
+      ? Number(displayValue.toFixed(decimals))
+      : Math.round(displayValue);
+
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(rounded);
+
+  return <span className={className}>{formatted}</span>;
 }
 
 function Field({
