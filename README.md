@@ -73,9 +73,9 @@ If `OPENAI_API_KEY` is not set, ingestion still works using the local heuristic 
 
 ## Deploy + Hourly Fetch
 
-This repo includes `vercel.json` with an hourly cron schedule:
+This repo includes `vercel.json` with a daily midnight cron schedule:
 
-- `0 * * * *` -> `/api/cron/ingest`
+- `0 0 * * *` -> `/api/cron/ingest`
 
 For production, set `CRON_SECRET` so only authorized cron calls can trigger ingestion.
 
