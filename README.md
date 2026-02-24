@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Layoff Radar
 
-## Getting Started
+AI Layoff Radar is a public, no-login website that tracks AI-related workforce impact in near real time.
 
-First, run the development server:
+It combines:
+- Hourly ingestion of public news RSS feeds about AI displacement and productivity shifts
+- AI model-based classification for each new layoff report (with heuristic fallback)
+- Estimated people-fired extraction from report text (plus severity-based imputation when headcount is undisclosed)
+- Crowdsourced submissions from workers and observers
+- Aggregated dashboard analytics (monthly trend, industry risk, role vulnerability, geography, velocity)
+- A company response channel for neutral context
+
+## Stack
+
+- Next.js 16 (App Router, TypeScript)
+- Tailwind CSS 4
+- SQLite (`better-sqlite3`)
+- Recharts (data visualization)
+- Zod (API validation)
+- `rss-parser` (news ingestion)
+
+## Local Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+User visits read from a local JSON cache file at `./data/layoff-reports.json`; visits do not trigger upstream searches.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Ingestion Modes
 
-## Learn More
+Run ingestion once:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run ingest
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run a persistent hourly worker:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run worker
+```
 
-## Deploy on Vercel
+## Environment Variables
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Create `.env.local` (optional):
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+DATABASE_PATH=/absolute/path/to/ai-layoff-radar.sqlite
+CRON_SECRET=replace-with-random-secret
+DASHBOARD_CACHE_PATH=/absolute/path/to/layoff-reports.json
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+If `DATABASE_PATH` is not set, the default is `./data/ai-layoff-radar.sqlite`.
+
+`CRON_SECRET` protects the cron endpoint (`/api/cron/ingest`).
+
+If `OPENAI_API_KEY` is not set, ingestion still works using the local heuristic fallback model.
+
+`DASHBOARD_CACHE_PATH` defaults to `./data/layoff-reports.json`.
+
+## Deploy + Hourly Fetch
+
+This repo includes `vercel.json` with an hourly cron schedule:
+
+- `0 * * * *` -> `/api/cron/ingest`
+
+For production, set `CRON_SECRET` so only authorized cron calls can trigger ingestion.
+
+Each cron ingestion run refreshes the local JSON cache file. Dashboard/API reads use that cache file.
+
+## Legal / Safety Positioning
+
+- Data is displayed as aggregated signals and trends
+- Entries are self-reported and/or sourced from public reporting
+- The dashboard does not make legal accusations
+- Companies can submit responses via the public company response form

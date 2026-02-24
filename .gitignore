@@ -20,6 +20,11 @@
 # production
 /build
 
+# local sqlite data
+/data/*.sqlite
+/data/*.sqlite-*
+/data/layoff-reports.json
+
 # misc
 .DS_Store
 *.pem

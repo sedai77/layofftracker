@@ -6,21 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ingest": "tsx src/worker/run-once.ts",
+    "worker": "tsx src/worker/hourly.ts",
+    "cache:refresh": "tsx src/worker/refresh-cache.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.575.0",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0",
+    "rss-parser": "^3.13.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
