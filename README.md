@@ -3,7 +3,7 @@
 AI Layoff Radar is a public, no-login website that tracks AI-related workforce impact in near real time.
 
 It combines:
-- Hourly ingestion of public news RSS feeds about AI displacement and productivity shifts
+- App-driven freshness checks every 5 minutes (configurable) for public news RSS feeds
 - AI model-based classification for each new layoff report (with heuristic fallback)
 - Estimated people-fired extraction from report text (plus severity-based imputation when headcount is undisclosed)
 - Crowdsourced submissions from workers and observers
@@ -36,7 +36,8 @@ npm run dev
 
 3. Open [http://localhost:3000](http://localhost:3000)
 
-User visits read from a local JSON cache file at `./data/layoff-reports.json`; visits do not trigger upstream searches.
+User visits read from a local JSON cache file at `./data/layoff-reports.json`.  
+When cache is stale, the app can trigger ingestion automatically.
 
 ## Ingestion Modes
 
@@ -62,6 +63,7 @@ CRON_SECRET=replace-with-random-secret
 DASHBOARD_CACHE_PATH=/absolute/path/to/layoff-reports.json
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4.1-mini
+APP_INGEST_REFRESH_MINUTES=5
 MODERATION_ADMIN_TOKEN=replace-with-long-random-token
 SIGNAL_SUBMISSION_LIMIT_PER_HOUR=6
 COMPANY_RESPONSE_LIMIT_PER_HOUR=4
@@ -73,6 +75,7 @@ In serverless runtimes (for example Vercel), it automatically falls back to `/tm
 `CRON_SECRET` protects the cron endpoint (`/api/cron/ingest`).
 
 If `OPENAI_API_KEY` is not set, ingestion still works using the local heuristic fallback model.
+`APP_INGEST_REFRESH_MINUTES` controls how often app requests can trigger ingestion (default: 5).
 If `MODERATION_ADMIN_TOKEN` is set, only requests with that token can review/approve/reject queued submissions.
 
 `DASHBOARD_CACHE_PATH` defaults to `./data/layoff-reports.json`.
@@ -86,7 +89,8 @@ This repo includes `vercel.json` with a daily midnight cron schedule:
 
 For production, set `CRON_SECRET` so only authorized cron calls can trigger ingestion.
 
-Each cron ingestion run refreshes the local JSON cache file. Dashboard/API reads use that cache file.
+The app also runs ingestion checks on normal dashboard/page requests, so it no longer depends on cron frequency alone.
+Each successful ingestion run refreshes the local JSON cache file, and dashboard reads use that cache.
 
 ## Moderation Queue (Owner Approval)
 

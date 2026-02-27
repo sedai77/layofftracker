@@ -6,22 +6,24 @@ import { ensureFreshIngestion } from "@/lib/ingestion";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const DEFAULT_INGEST_REFRESH_MINUTES = 5;
+
 export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
     const country = params.get("country") ?? undefined;
     const industry = params.get("industry") ?? undefined;
+    const refreshWindowMinutes = parseRefreshWindowMinutes(
+      process.env.APP_INGEST_REFRESH_MINUTES,
+    );
 
-    let data = getDashboardDataFromCache({ country, industry });
-
-    if (data.summary.totalSignals === 0) {
-      try {
-        await ensureFreshIngestion(24 * 60);
-        data = getDashboardDataFromCache({ country, industry });
-      } catch {
-        // Return cache-only response even if ingestion fails.
-      }
+    try {
+      await ensureFreshIngestion(refreshWindowMinutes);
+    } catch {
+      // Return cache-only response even when ingestion fails.
     }
+
+    const data = getDashboardDataFromCache({ country, industry });
 
     return NextResponse.json(data, {
       headers: {
@@ -41,4 +43,13 @@ export async function GET(request: NextRequest) {
       },
     );
   }
+}
+
+function parseRefreshWindowMinutes(value: string | undefined): number {
+  const parsed = Number(value ?? DEFAULT_INGEST_REFRESH_MINUTES);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_INGEST_REFRESH_MINUTES;
+  }
+
+  return Math.max(1, Math.min(60, Math.floor(parsed)));
 }

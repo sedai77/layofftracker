@@ -290,12 +290,13 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
               </h1>
               <p className="max-w-2xl text-sm text-slate-200 md:text-base">
                 Signals are aggregated from public news and self-reports. This index
-                is updated daily by cron (plus on-demand refresh) and designed for trend
+                is refreshed in-app every 5 minutes (plus daily cron fallback) and
+                designed for trend
                 detection, not blame.
               </p>
               <div className="flex flex-wrap gap-2 text-xs text-cyan-100 md:text-sm">
                 <Tag icon={<ShieldAlert className="h-3.5 w-3.5" />} text="Self-reported + verified-source blend" />
-                <Tag icon={<Clock3 className="h-3.5 w-3.5" />} text="Daily ingestion pipeline" />
+                <Tag icon={<Clock3 className="h-3.5 w-3.5" />} text="5-minute app refresh" />
                 <Tag icon={<Globe2 className="h-3.5 w-3.5" />} text="No login required" />
               </div>
             </div>
