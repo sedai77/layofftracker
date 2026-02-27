@@ -67,6 +67,7 @@ if (!globalForDb.__layoffRadarDb) {
     CREATE INDEX IF NOT EXISTS idx_events_industry ON impact_events(industry);
     CREATE INDEX IF NOT EXISTS idx_events_country ON impact_events(country);
     CREATE INDEX IF NOT EXISTS idx_events_impact_type ON impact_events(impact_type);
+    CREATE INDEX IF NOT EXISTS idx_events_source_url ON impact_events(source_url);
 
     CREATE TABLE IF NOT EXISTS company_responses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -281,6 +282,25 @@ export function hasEventByExternalId(externalId: string): boolean {
       `,
     )
     .get(externalId);
+
+  return Boolean(row);
+}
+
+export function hasEventBySourceUrl(sourceUrl: string): boolean {
+  if (!sourceUrl.trim()) {
+    return false;
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT 1
+      FROM impact_events
+      WHERE source_url = ?
+      LIMIT 1
+      `,
+    )
+    .get(sourceUrl.trim());
 
   return Boolean(row);
 }

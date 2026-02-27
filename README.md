@@ -4,7 +4,7 @@ AI Layoff Radar is a public, no-login website that tracks AI-related workforce i
 
 It combines:
 - App-driven freshness checks every 5 minutes (configurable) for public news RSS feeds
-- AI model-based classification for each new layoff report (with heuristic fallback)
+- AI model-based classification for each new report (only AI-related layoff candidates are ingested)
 - Estimated people-fired extraction from report text (plus severity-based imputation when headcount is undisclosed)
 - Crowdsourced submissions from workers and observers
 - Manual moderation queue for all public form submissions
@@ -52,6 +52,29 @@ Run a persistent hourly worker:
 ```bash
 npm run worker
 ```
+
+## Current Source Coverage
+
+The ingestion pipeline currently pulls from:
+
+- Google News RSS search editions (`US`, `UK`, `India`, `Canada`, `Australia`) across AI + layoffs/job-cuts queries
+- BBC (`Business`, `Technology`)
+- The Guardian (`Business`, `Technology`)
+- New York Times (`Business`, `Technology`)
+- WSJ (`WSJD`)
+- CNBC (`Top News`, `Technology`)
+- TechCrunch AI
+- VentureBeat AI
+- Wired AI
+- Hacker News AI-layoff search feed (community signal layer)
+
+Public source catalog endpoint:
+
+```bash
+GET /api/sources
+```
+
+Important: no public pipeline can guarantee 100% worldwide layoff coverage (some publishers have no RSS or paywalled APIs), but this setup broadens coverage significantly while keeping quality controls.
 
 ## Environment Variables
 

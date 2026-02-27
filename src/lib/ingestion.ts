@@ -9,6 +9,7 @@ import {
   finishIngestionRun,
   getLastSuccessfulIngestionAt,
   hasEventByExternalId,
+  hasEventBySourceUrl,
   insertEvent,
 } from "@/lib/db";
 
@@ -17,6 +18,18 @@ interface FeedDescriptor {
   url: string;
   maxItems?: number;
   channel: "news" | "publication" | "community";
+}
+
+interface GoogleNewsEdition {
+  label: string;
+  hl: string;
+  gl: string;
+  ceid: string;
+}
+
+interface GoogleNewsSearch {
+  label: string;
+  query: string;
 }
 
 interface FeedItem {
@@ -38,30 +51,101 @@ export interface IngestionResult {
   errors: string[];
 }
 
-const NEWS_FEEDS: FeedDescriptor[] = [
+const GOOGLE_NEWS_EDITIONS: GoogleNewsEdition[] = [
+  { label: "US", hl: "en-US", gl: "US", ceid: "US:en" },
+  { label: "UK", hl: "en-GB", gl: "GB", ceid: "GB:en" },
+  { label: "India", hl: "en-IN", gl: "IN", ceid: "IN:en" },
+  { label: "Canada", hl: "en-CA", gl: "CA", ceid: "CA:en" },
+  { label: "Australia", hl: "en-AU", gl: "AU", ceid: "AU:en" },
+];
+
+const GOOGLE_NEWS_SEARCHES: GoogleNewsSearch[] = [
   {
-    name: "Google News - AI Layoffs",
-    url: "https://news.google.com/rss/search?q=AI+layoffs+jobs&hl=en-US&gl=US&ceid=US:en",
-    channel: "news",
+    label: "AI Layoffs",
+    query:
+      "(\"AI\" OR \"artificial intelligence\" OR automation OR \"generative AI\") (layoffs OR \"job cuts\" OR redundancies OR \"workforce reduction\" OR \"headcount reduction\")",
   },
   {
-    name: "Google News - Automation Job Cuts",
-    url: "https://news.google.com/rss/search?q=automation+job+cuts+industry&hl=en-US&gl=US&ceid=US:en",
-    channel: "news",
+    label: "AI Job Displacement",
+    query:
+      "(\"AI\" OR \"machine learning\" OR chatbot OR \"LLM\") (displaced workers OR layoffs OR \"cut jobs\" OR redundancies)",
   },
   {
-    name: "Google News - AI Workforce Productivity",
-    url: "https://news.google.com/rss/search?q=AI+productivity+workforce+impact&hl=en-US&gl=US&ceid=US:en",
-    channel: "news",
+    label: "Automation Workforce Cuts",
+    query:
+      "(automation OR \"generative AI\" OR \"AI assistant\") (\"workforce cuts\" OR layoffs OR \"job losses\")",
   },
   {
-    name: "Google News - AI Displacement",
-    url: "https://news.google.com/rss/search?q=AI+displacement+workers+industry&hl=en-US&gl=US&ceid=US:en",
-    channel: "news",
+    label: "Role Replacement",
+    query:
+      "(\"AI tools\" OR \"AI agents\" OR \"AI automation\") (\"replacing workers\" OR layoffs OR \"staff cuts\")",
   },
 ];
 
+const NEWS_FEEDS: FeedDescriptor[] = GOOGLE_NEWS_EDITIONS.flatMap((edition) =>
+  GOOGLE_NEWS_SEARCHES.map((search) => ({
+    name: `Google News ${edition.label} - ${search.label}`,
+    url: buildGoogleNewsSearchUrl(search.query, edition),
+    channel: "news" as const,
+    maxItems: 30,
+  })),
+);
+
 const PUBLICATION_FEEDS: FeedDescriptor[] = [
+  {
+    name: "BBC Business",
+    url: "http://feeds.bbci.co.uk/news/business/rss.xml",
+    channel: "publication",
+    maxItems: 35,
+  },
+  {
+    name: "BBC Technology",
+    url: "http://feeds.bbci.co.uk/news/technology/rss.xml",
+    channel: "publication",
+    maxItems: 35,
+  },
+  {
+    name: "The Guardian Business",
+    url: "https://www.theguardian.com/business/rss",
+    channel: "publication",
+    maxItems: 30,
+  },
+  {
+    name: "The Guardian Technology",
+    url: "https://www.theguardian.com/technology/rss",
+    channel: "publication",
+    maxItems: 30,
+  },
+  {
+    name: "NYTimes Business",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
+    channel: "publication",
+    maxItems: 30,
+  },
+  {
+    name: "NYTimes Technology",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+    channel: "publication",
+    maxItems: 30,
+  },
+  {
+    name: "WSJ Technology (WSJD)",
+    url: "https://feeds.a.dj.com/rss/RSSWSJD.xml",
+    channel: "publication",
+    maxItems: 25,
+  },
+  {
+    name: "CNBC Top News",
+    url: "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    channel: "publication",
+    maxItems: 25,
+  },
+  {
+    name: "CNBC Technology",
+    url: "https://www.cnbc.com/id/19854910/device/rss/rss.html",
+    channel: "publication",
+    maxItems: 25,
+  },
   {
     name: "TechCrunch AI",
     url: "https://techcrunch.com/category/artificial-intelligence/feed/",
@@ -87,25 +171,7 @@ const COMMUNITY_FEEDS: FeedDescriptor[] = [
     name: "HN RSS Search - AI Layoff",
     url: "https://hnrss.org/newest?q=ai+layoff",
     channel: "community",
-    maxItems: 30,
-  },
-  {
-    name: "HN RSS Search - Workforce Automation",
-    url: "https://hnrss.org/newest?q=workforce+automation",
-    channel: "community",
-    maxItems: 30,
-  },
-  {
-    name: "HN RSS Search - AI Jobs",
-    url: "https://hnrss.org/newest?q=ai+jobs",
-    channel: "community",
-    maxItems: 30,
-  },
-  {
-    name: "HN RSS Search - LLM Productivity",
-    url: "https://hnrss.org/newest?q=llm+productivity",
-    channel: "community",
-    maxItems: 30,
+    maxItems: 20,
   },
 ];
 
@@ -123,6 +189,10 @@ const parser = new Parser<Record<string, never>, FeedItem>({
   },
 });
 let activeIngestion: Promise<IngestionResult> | null = null;
+
+export function getIngestionSourceCatalog(): FeedDescriptor[] {
+  return FEED_SOURCES.map((source) => ({ ...source }));
+}
 
 export async function ensureFreshIngestion(maxAgeMinutes = 60): Promise<void> {
   const lastSuccessful = getLastSuccessfulIngestionAt();
@@ -159,6 +229,7 @@ async function executeIngestion(trigger: string): Promise<IngestionResult> {
   let insertedCount = 0;
   let skippedCount = 0;
   const errors: string[] = [];
+  const seenRunKeys = new Set<string>();
 
   try {
     const feedResults = await Promise.allSettled(
@@ -187,6 +258,13 @@ async function executeIngestion(trigger: string): Promise<IngestionResult> {
 
         fetchedCount += 1;
         const link = item.link?.trim() || null;
+        const runKey = makeRunDedupKey(link, item.pubDate ?? item.isoDate ?? "", title);
+        if (seenRunKeys.has(runKey)) {
+          skippedCount += 1;
+          continue;
+        }
+        seenRunKeys.add(runKey);
+
         const externalId = makeExternalId(
           source.name,
           link,
@@ -199,6 +277,11 @@ async function executeIngestion(trigger: string): Promise<IngestionResult> {
           continue;
         }
 
+        if (link && hasEventBySourceUrl(link)) {
+          skippedCount += 1;
+          continue;
+        }
+
         const analysis = await analyzeLayoffReport({
           title,
           summary,
@@ -206,7 +289,7 @@ async function executeIngestion(trigger: string): Promise<IngestionResult> {
           sourceUrl: link,
         });
 
-        if (!analysis.isLayoffCandidate) {
+        if (!analysis.isLayoffCandidate || !analysis.isAiRelated) {
           skippedCount += 1;
           continue;
         }
@@ -306,6 +389,20 @@ async function executeIngestion(trigger: string): Promise<IngestionResult> {
   }
 }
 
+function buildGoogleNewsSearchUrl(
+  query: string,
+  edition: GoogleNewsEdition,
+): string {
+  const params = new URLSearchParams({
+    q: query,
+    hl: edition.hl,
+    gl: edition.gl,
+    ceid: edition.ceid,
+  });
+
+  return `https://news.google.com/rss/search?${params.toString()}`;
+}
+
 function makeExternalId(
   sourceName: string,
   link: string | null,
@@ -314,6 +411,16 @@ function makeExternalId(
 ): string {
   return createHash("sha256")
     .update(`${sourceName}|${link ?? ""}|${publishedAt}|${title}`)
+    .digest("hex");
+}
+
+function makeRunDedupKey(
+  link: string | null,
+  publishedAt: string,
+  title: string,
+): string {
+  return createHash("sha256")
+    .update(`${link ?? ""}|${publishedAt}|${title}`)
     .digest("hex");
 }
 
