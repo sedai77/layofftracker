@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 import {
@@ -39,9 +38,6 @@ import {
 
 import {
   COUNTRY_OPTIONS,
-  DEFAULT_REGION_FOCUS,
-  INDUSTRY_OPTIONS,
-  JOB_FUNCTION_OPTIONS,
 } from "@/lib/options";
 import { formatImpactLabel, formatRelativeDate, pctLabel } from "@/lib/format";
 import type { DashboardData } from "@/lib/types";
@@ -50,44 +46,6 @@ interface RadarDashboardProps {
   initialData: DashboardData;
 }
 
-interface SubmissionFormState {
-  company: string;
-  industry: string;
-  jobFunction: string;
-  country: string;
-  impactType: string;
-  title: string;
-  summary: string;
-  sourceUrl: string;
-  reportedAt: string;
-}
-
-interface CompanyResponseState {
-  company: string;
-  statement: string;
-  contactEmail: string;
-  referenceUrl: string;
-}
-
-const initialSubmissionState: SubmissionFormState = {
-  company: "",
-  industry: "Technology / SaaS",
-  jobFunction: "Operations",
-  country: DEFAULT_REGION_FOCUS,
-  impactType: "automation",
-  title: "",
-  summary: "",
-  sourceUrl: "",
-  reportedAt: "",
-};
-
-const initialCompanyResponseState: CompanyResponseState = {
-  company: "",
-  statement: "",
-  contactEmail: "",
-  referenceUrl: "",
-};
-
 export function RadarDashboard({ initialData }: RadarDashboardProps) {
   const [dashboard, setDashboard] = useState(initialData);
   const [countryFilter, setCountryFilter] = useState("All");
@@ -95,14 +53,6 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
-
-  const [submission, setSubmission] = useState(initialSubmissionState);
-  const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [companyResponse, setCompanyResponse] = useState(initialCompanyResponseState);
-  const [companyStatus, setCompanyStatus] = useState<string | null>(null);
-  const [submittingResponse, setSubmittingResponse] = useState(false);
 
   const refreshData = useCallback(
     async (silent: boolean) => {
@@ -174,71 +124,6 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
     () => ["All", ...dashboard.availableIndustries],
     [dashboard.availableIndustries],
   );
-
-  const handleSubmitReport = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setSubmissionStatus(null);
-
-    try {
-      const response = await fetch("/api/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(submission),
-      });
-
-      const payload = (await response.json()) as { message?: string; error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to submit report");
-      }
-
-      setSubmissionStatus(payload.message ?? "Submission accepted.");
-      setSubmission(initialSubmissionState);
-      void refreshData(true);
-    } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Unable to submit";
-      setSubmissionStatus(message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleSubmitCompanyResponse = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    setSubmittingResponse(true);
-    setCompanyStatus(null);
-
-    try {
-      const response = await fetch("/api/company-response", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(companyResponse),
-      });
-
-      const payload = (await response.json()) as { message?: string; error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to submit company response");
-      }
-
-      setCompanyStatus(payload.message ?? "Company response submitted.");
-      setCompanyResponse(initialCompanyResponseState);
-    } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "Unable to submit";
-      setCompanyStatus(message);
-    } finally {
-      setSubmittingResponse(false);
-    }
-  };
 
   const velocityLabel = pctLabel(dashboard.summary.velocityDeltaPct);
   const revealClass = revealed
@@ -665,7 +550,7 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
           <Panel title="Latest stories" subtitle="Public links + approved self-reported entries">
             <div className="space-y-3">
               {dashboard.stories.length === 0 && (
-                <p className="text-sm text-slate-300">No events yet. Submit the first report below.</p>
+                <p className="text-sm text-slate-300">No approved events yet.</p>
               )}
 
               {dashboard.stories.map((story) => (
@@ -706,176 +591,6 @@ export function RadarDashboard({ initialData }: RadarDashboardProps) {
                 </article>
               ))}
             </div>
-          </Panel>
-        </section>
-
-        <section
-          className={`mt-4 grid gap-4 xl:grid-cols-2 transition-all duration-700 ${revealClass}`}
-          style={{ transitionDelay: "420ms" }}
-        >
-          <Panel
-            title="Submit an AI impact signal"
-            subtitle="Anyone can submit, but every entry is held in pending review until manually approved."
-          >
-            <form className="grid gap-3" onSubmit={handleSubmitReport}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label="Company (optional)"
-                  value={submission.company}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, company: value }))
-                  }
-                />
-                <Field
-                  label="Country"
-                  value={submission.country}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, country: value }))
-                  }
-                  as="select"
-                  options={countries.filter((country) => country !== "All")}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label="Industry"
-                  value={submission.industry}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, industry: value }))
-                  }
-                  as="select"
-                  options={dashboard.availableIndustries}
-                  fallbackOptions={[...INDUSTRY_OPTIONS]}
-                />
-                <Field
-                  label="Job function"
-                  value={submission.jobFunction}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, jobFunction: value }))
-                  }
-                  as="select"
-                  options={dashboard.roleVulnerability.map((item) => item.label)}
-                  fallbackOptions={[...JOB_FUNCTION_OPTIONS]}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label="Impact type"
-                  value={submission.impactType}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, impactType: value }))
-                  }
-                  as="select"
-                  options={["automation", "partial", "productivity"]}
-                />
-                <Field
-                  label="Observed date"
-                  value={submission.reportedAt}
-                  onChange={(value) =>
-                    setSubmission((state) => ({ ...state, reportedAt: value }))
-                  }
-                  type="date"
-                />
-              </div>
-
-              <Field
-                label="Headline"
-                value={submission.title}
-                onChange={(value) =>
-                  setSubmission((state) => ({ ...state, title: value }))
-                }
-                placeholder="Example: Mid-sized support team reduced after chatbot rollout"
-                required
-              />
-
-              <TextArea
-                label="What happened?"
-                value={submission.summary}
-                onChange={(value) =>
-                  setSubmission((state) => ({ ...state, summary: value }))
-                }
-                required
-              />
-
-              <Field
-                label="Public source URL (optional)"
-                value={submission.sourceUrl}
-                onChange={(value) =>
-                  setSubmission((state) => ({ ...state, sourceUrl: value }))
-                }
-                type="url"
-                placeholder="https://"
-              />
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex items-center justify-center rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? "Submitting..." : "Submit signal"}
-              </button>
-
-              {submissionStatus && (
-                <p className="text-xs text-slate-200">{submissionStatus}</p>
-              )}
-            </form>
-          </Panel>
-
-          <Panel
-            title="Company response channel"
-            subtitle="Responses are queued and require manual moderation before publication."
-          >
-            <form className="grid gap-3" onSubmit={handleSubmitCompanyResponse}>
-              <Field
-                label="Company"
-                value={companyResponse.company}
-                onChange={(value) =>
-                  setCompanyResponse((state) => ({ ...state, company: value }))
-                }
-                required
-              />
-
-              <TextArea
-                label="Official statement"
-                value={companyResponse.statement}
-                onChange={(value) =>
-                  setCompanyResponse((state) => ({ ...state, statement: value }))
-                }
-                required
-              />
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  label="Contact email (optional)"
-                  value={companyResponse.contactEmail}
-                  onChange={(value) =>
-                    setCompanyResponse((state) => ({ ...state, contactEmail: value }))
-                  }
-                  type="email"
-                />
-                <Field
-                  label="Reference URL (optional)"
-                  value={companyResponse.referenceUrl}
-                  onChange={(value) =>
-                    setCompanyResponse((state) => ({ ...state, referenceUrl: value }))
-                  }
-                  type="url"
-                  placeholder="https://"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingResponse}
-                className="inline-flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submittingResponse ? "Submitting..." : "Submit company response"}
-              </button>
-
-              {companyStatus && <p className="text-xs text-slate-200">{companyStatus}</p>}
-            </form>
           </Panel>
         </section>
 
@@ -1029,87 +744,4 @@ function compactLabel(value: string, maxLength: number): string {
   }
 
   return `${value.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  required,
-  type = "text",
-  as = "input",
-  options,
-  fallbackOptions,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  required?: boolean;
-  type?: string;
-  as?: "input" | "select";
-  options?: string[];
-  fallbackOptions?: string[];
-}) {
-  const effectiveOptions =
-    options && options.length > 0
-      ? options
-      : fallbackOptions && fallbackOptions.length > 0
-        ? fallbackOptions
-        : [];
-
-  return (
-    <label className="grid gap-1 text-xs text-slate-300">
-      {label}
-      {as === "select" ? (
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          required={required}
-          className="rounded-xl border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
-        >
-          {effectiveOptions.map((option) => (
-            <option key={option} value={option} className="bg-slate-950">
-              {option}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          required={required}
-          type={type}
-          className="rounded-xl border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
-        />
-      )}
-    </label>
-  );
-}
-
-function TextArea({
-  label,
-  value,
-  onChange,
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  required?: boolean;
-}) {
-  return (
-    <label className="grid gap-1 text-xs text-slate-300">
-      {label}
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required={required}
-        rows={4}
-        className="rounded-xl border border-slate-600/60 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-300"
-      />
-    </label>
-  );
 }
